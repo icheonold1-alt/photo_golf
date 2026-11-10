@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>장수대학 평생교육 프로그램 사진 관리</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- JSZip & FileSaver -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-10">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white text-xs px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 transition-all duration-300 opacity-0 pointer-events-none">
+    <i id="toast-icon" class="fa-solid fa-spinner fa-spin text-emerald-400"></i>
+    <span id="toast-msg">처리 중...</span>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-indigo-700 text-white sticky top-0 z-30 shadow-md">
+    <div class="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      <div>
+        <h1 class="font-bold text-lg flex items-center gap-2">
+          <i class="fa-solid fa-camera"></i> 장수대학 수업사진 관리
+        </h1>
+        <div class="flex items-center gap-2 mt-0.5">
+          <span class="text-xs text-indigo-200 font-bold" id="current-week-badge">주차 계산 중...</span>
+          <span class="bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 text-[10px] px-1.5 py-0.2 rounded font-semibold flex items-center gap-1">
+            <i class="fa-solid fa-users"></i> 주간 동기화
+          </span>
+        </div>
+      </div>
+      
+      <!-- Header Action Buttons -->
+      <div class="flex items-center gap-1.5">
+        <!-- ⛳ 골프 예약 조회 버튼 -->
+        <button id="open-golf-btn" onclick="openGolfModal()" class="bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 text-white text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 transition shadow-sm">
+          <i class="fa-solid fa-flag-checkered"></i> 골프 예약
+        </button>
+
+        <!-- Menu Button -->
+        <button id="open-menu-btn" class="bg-indigo-800 hover:bg-indigo-900 border border-indigo-500 text-white text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition">
+          <i class="fa-solid fa-bars"></i> 메뉴
+        </button>
+      </div>
+    </div>
+
+    <!-- Archive Banner -->
+    <div id="archive-banner" class="bg-amber-500 text-slate-900 px-4 py-1.5 text-xs font-bold text-center hidden flex items-center justify-center gap-2">
+      <i class="fa-solid fa-box-archive"></i>
+      <span id="archive-banner-text">[보관함]을 조회 중입니다.</span>
+      <button onclick="exitArchiveView()" class="ml-2 bg-amber-700 text-white text-[10px] px-2 py-0.5 rounded-md hover:bg-amber-800">이번 주로 돌아가기</button>
+    </div>
+
+    <!-- Dual Progress Bar (이번 주 / 이번 달) -->
+    <div id="progress-container" class="max-w-md mx-auto px-4 pb-3 pt-1 space-y-2">
+      <!-- 이번 주 진척도 -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold mb-1">
+          <span id="progress-week-text">📅 이번 주 필수 촬영: 0 / 69 (0%)</span>
+        </div>
+        <div class="w-full bg-indigo-900 rounded-full h-2 overflow-hidden">
+          <div id="progress-week-bar" class="bg-emerald-400 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- 이번 달 진척도 -->
+      <div>
+        <div class="flex justify-between text-xs font-semibold mb-1">
+          <span id="progress-month-text">🗓️ 이번 달 필수 촬영: 0 / 69 (0%)</span>
+          <span id="warning-count-badge" class="text-[10px] bg-rose-500 text-white px-1.5 py-0.2 rounded font-bold">이번 달 0회 0개</span>
+        </div>
+        <div class="w-full bg-indigo-900 rounded-full h-2 overflow-hidden">
+          <div id="progress-month-bar" class="bg-amber-400 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Day Filter Tabs -->
+    <div class="max-w-md mx-auto px-4 flex gap-2 overflow-x-auto hide-scrollbar pb-3">
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="월">월요일</button>
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="화">화요일</button>
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="수">수요일</button>
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="목">목요일</button>
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="금">금요일</button>
+      <button class="day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0" data-day="전체">전체</button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-md mx-auto px-4 pt-4">
+
+    <!-- Search & Filter Bar -->
+    <div class="mb-3 flex gap-2">
+      <div class="relative flex-1">
+        <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400 text-sm"></i>
+        <input type="text" id="search-input" placeholder="수업명 또는 장소 검색..." class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
+      </div>
+      <select id="status-filter" class="bg-white border border-slate-200 text-sm rounded-xl px-2 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm">
+        <option value="all">전체 상태</option>
+        <option value="danger">⚠️ 이번 달 0회 (긴급)</option>
+        <option value="pending">미완료만</option>
+        <option value="done">완료만</option>
+        <option value="optional">선택사항(기타)</option>
+      </select>
+    </div>
+
+    <!-- Info Banner -->
+    <div class="mb-3 text-[11px] text-slate-500 flex items-center justify-between px-1">
+      <span><i class="fa-solid fa-arrow-down-short-wide text-indigo-500 mr-1"></i>시간순 ➔ 낮은 층수순 정렬됨</span>
+      <span class="text-slate-400">(주 1회 촬영 / 월 최소 1회 필수)</span>
+    </div>
+
+    <!-- Cards Container -->
+    <div id="cards-container" class="space-y-3"></div>
+  </main>
+
+  <!-- Hidden Upload Inputs -->
+  <input type="file" id="camera-input" accept="image/*" capture="environment" class="hidden">
+  <input type="file" id="gallery-input" accept="image/*" class="hidden">
+
+  <!-- Modal 1: Photo Upload Type Selection Sheet -->
+  <div id="upload-type-modal" class="fixed inset-0 bg-black/60 z-50 flex items-end justify-center hidden backdrop-blur-xs">
+    <div class="bg-white rounded-t-3xl w-full max-w-md p-5 space-y-3">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-slate-800 text-base">사진 등록 방식 선택</h3>
+        <button onclick="closeUploadTypeModal()" class="text-slate-400 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <button id="choose-camera-btn" class="py-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-2xl flex flex-col items-center gap-2 text-indigo-700 font-bold transition">
+          <i class="fa-solid fa-camera text-2xl"></i>
+          <span class="text-xs">카메라로 바로 촬영</span>
+        </button>
+        <button id="choose-gallery-btn" class="py-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-2xl flex flex-col items-center gap-2 text-emerald-700 font-bold transition">
+          <i class="fa-solid fa-images text-2xl"></i>
+          <span class="text-xs">갤러리/앨범에서 선택</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Menu / Actions Modal -->
+  <div id="menu-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden backdrop-blur-xs">
+    <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col">
+      <div class="p-4 bg-indigo-700 text-white flex justify-between items-center">
+        <h3 class="font-bold text-base flex items-center gap-2">
+          <i class="fa-solid fa-sliders"></i> 관리 및 주차별 보관함
+        </h3>
+        <button id="menu-close-btn" class="text-white/80 hover:text-white text-lg p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <div class="p-4 space-y-3">
+        <!-- Week Selector Area -->
+        <div class="bg-indigo-50 border border-indigo-100 p-3 rounded-2xl space-y-1.5">
+          <label class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+            <i class="fa-solid fa-calendar-week text-indigo-600"></i> 주차 선택 및 보관함 이동
+          </label>
+          <select id="week-selector" class="w-full bg-white border border-indigo-200 text-xs font-bold rounded-xl px-3 py-2 text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <!-- Dynamically Populated -->
+          </select>
+          <button id="load-week-btn" class="w-full mt-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition">
+            선택한 주차 조회하기
+          </button>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl space-y-1.5">
+          <label class="text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+            <i class="fa-solid fa-file-zipper text-emerald-600"></i> 월별 전체 사진 ZIP 다운로드
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="zip-this-month-btn" class="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition">
+              <span id="zip-this-month-label">이번 달</span>
+            </button>
+            <button id="zip-last-month-btn" class="py-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 font-bold rounded-xl text-xs transition">
+              <span id="zip-last-month-label">지난 달</span>
+            </button>
+          </div>
+        </div>
+
+        <button id="menu-sync-btn" class="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs flex items-center justify-between transition">
+          <span class="flex items-center gap-2"><i class="fa-solid fa-rotate text-indigo-600"></i> 구글 드라이브 동기화</span>
+          <i class="fa-solid fa-chevron-right text-xs opacity-50"></i>
+        </button>
+
+        <button id="menu-reset-btn" class="w-full py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-2xl text-xs flex items-center justify-between transition border border-rose-100">
+          <span class="flex items-center gap-2"><i class="fa-solid fa-trash-can"></i> 이번 주 사진 전체 리셋</span>
+          <i class="fa-solid fa-triangle-exclamation text-xs opacity-70"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: Photo Preview Modal -->
+  <div id="photo-modal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+    <div class="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl flex flex-col">
+      <div class="p-4 bg-slate-900 text-white flex justify-between items-center">
+        <div>
+          <h4 id="modal-title" class="font-bold text-sm">수업 정보</h4>
+          <p id="modal-date" class="text-xs text-slate-400 font-mono">촬영 및 동기화 상태</p>
+        </div>
+        <button id="modal-close-btn" class="text-slate-400 hover:text-white text-lg p-1">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="relative bg-slate-950 flex items-center justify-center min-h-[240px] max-h-[60vh] overflow-hidden">
+        <img id="modal-img" src="" alt="등록 사진 미리보기" class="max-w-full max-h-[55vh] object-contain">
+      </div>
+
+      <div class="p-4 bg-white border-t border-slate-100 flex gap-2">
+        <button id="modal-retake-btn" class="flex-1 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-indigo-200">
+          <i class="fa-solid fa-camera"></i> 다시 등록하기
+        </button>
+        <button id="modal-delete-btn" class="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl text-xs flex items-center justify-center gap-1 border border-rose-200">
+          <i class="fa-solid fa-trash-can"></i> 드라이브에서 삭제
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: 스크린 파크골프 예약 명단 조회 팝업 -->
+  <div id="golf-modal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 hidden backdrop-blur-xs">
+    <div class="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl flex flex-col">
+      <!-- Modal Header -->
+      <div class="p-4 bg-emerald-700 text-white flex justify-between items-center shadow-sm">
+        <div>
+          <h3 class="font-bold text-base flex items-center gap-2">
+            <i class="fa-solid fa-golf-ball-tee"></i> 스크린파크골프 예약 명단
+          </h3>
+          <p id="golf-date-badge" class="text-[11px] text-emerald-200 mt-0.5">날짜 로딩 중...</p>
+        </div>
+        <div class="flex items-center gap-1">
+          <button onclick="fetchGolfReservations()" class="bg-emerald-800 hover:bg-emerald-900 text-white text-xs p-2 rounded-xl transition" title="새로고침">
+            <i class="fa-solid fa-rotate"></i>
+          </button>
+          <button onclick="closeGolfModal()" class="text-white/80 hover:text-white text-lg p-1 ml-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Modal Body (명단 표시 영역) -->
+      <div id="golf-list-container" class="p-4 space-y-3 overflow-y-auto max-h-[calc(85vh-70px)] bg-slate-50">
+        <div class="text-center py-8 text-slate-400 text-sm">
+          <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600"></i>
+          <p>명단을 불러오는 중입니다...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwd3kq1jBVT38_ptAvNGvjmoA-H7ISBVqiQse1Ns0ATIxOZa22k-O4aDmViCPxob5V7/exec";
+
+    const rawData = [
+      { id: "P001", location: "3층큰마당", day: "월", time: "10:30~11:30", name: "교양·건강강좌", isOptional: true },
+      { id: "P002", location: "3층큰마당", day: "월", time: "13:00~13:50", name: "레크레이션" },
+      { id: "P003", location: "3층큰마당", day: "월", time: "14:00~14:50", name: "시니어 힐링댄스" },
+      { id: "P004", location: "3층큰마당", day: "월", time: "15:00~15:50", name: "국선도 초급" },
+      { id: "P005", location: "3층큰마당", day: "화", time: "09:30~09:50", name: "건강 스트레칭", isOptional: true },
+      { id: "P006", location: "3층큰마당", day: "화", time: "10:00~10:50", name: "생활태권체조(기초)" },
+      { id: "P007", location: "3층큰마당", day: "화", time: "11:00~11:50", name: "웃음건강체조" },
+      { id: "P008", location: "3층큰마당", day: "화", time: "13:00~13:50", name: "시니어트롯핏" },
+      { id: "P009", location: "3층큰마당", day: "화", time: "14:00~14:50", name: "국학기공체조" },
+      { id: "P010", location: "3층큰마당", day: "화", time: "15:00~15:50", name: "생활요가" },
+      { id: "P011", location: "3층큰마당", day: "수", time: "09:30~09:50", name: "건강 스트레칭", isOptional: true },
+      { id: "P012", location: "3층큰마당", day: "수", time: "10:00~10:50", name: "생활태권체조(초급)" },
+      { id: "P013", location: "3층큰마당", day: "수", time: "11:00~11:50", name: "요가교실" },
+      { id: "P014", location: "3층큰마당", day: "수", time: "13:00~13:50", name: "신바람댄스" },
+      { id: "P015", location: "3층큰마당", day: "수", time: "14:00~14:50", name: "힐링송" },
+      { id: "P016", location: "3층큰마당", day: "수", time: "15:00~15:50", name: "백세체조" },
+      { id: "P017", location: "3층큰마당", day: "목", time: "09:30~09:50", name: "건강 스트레칭", isOptional: true },
+      { id: "P018", location: "3층큰마당", day: "목", time: "10:00~10:50", name: "생활근력체조" },
+      { id: "P019", location: "3층큰마당", day: "목", time: "11:00~11:50", name: "라인댄스" },
+      { id: "P020", location: "3층큰마당", day: "목", time: "13:00~13:20", name: "오후 조회", isOptional: true },
+      { id: "P021", location: "3층큰마당", day: "목", time: "13:25~15:00", name: "하하하송" },
+      { id: "P022", location: "3층큰마당", day: "목", time: "15:00~15:50", name: "백세요가" },
+      { id: "P023", location: "3층큰마당", day: "금", time: "10:00~10:50", name: "단전호흡" },
+      { id: "P024", location: "3층큰마당", day: "금", time: "11:00~11:50", name: "웰빙 에어로빅" },
+      { id: "P025", location: "3층큰마당", day: "금", time: "13:00~13:50", name: "줌바댄스" },
+      { id: "P026", location: "3층큰마당", day: "금", time: "14:00~14:50", name: "한국무용" },
+      { id: "P027", location: "3층큰마당", day: "금", time: "15:00~15:50", name: "백세댄스" },
+      { id: "P028", location: "3층초록배움터1", day: "목", time: "10:00~12:00", name: "그림책이야기" },
+      { id: "P029", location: "3층초록배움터2", day: "화", time: "10:00~11:30", name: "영어 기초A" },
+      { id: "P030", location: "3층초록배움터2", day: "수", time: "10:00~12:00", name: "시니어 주산(중급)" },
+      { id: "P031", location: "3층초록배움터2", day: "수", time: "13:00~15:00", name: "시니어 주산(초급)" },
+      { id: "P032", location: "3층초록배움터2", day: "목", time: "10:00~11:30", name: "영어 기초B" },
+      { id: "P033", location: "3층초록배움터2", day: "목", time: "13:00~14:10", name: "하모니카(초)" },
+      { id: "P034", location: "3층초록배움터2", day: "목", time: "14:10~15:30", name: "하모니카(중)" },
+      { id: "P035", location: "3층초록배움터2", day: "금", time: "10:00~12:00", name: "오카리나(초급)" },
+      { id: "P036", location: "2층빨강배움터1", day: "월", time: "09:00~12:00", name: "문해2단계(월)" },
+      { id: "P037", location: "2층빨강배움터1", day: "월", time: "13:00~15:00", name: "오카리나(중급)" },
+      { id: "P038", location: "2층빨강배움터1", day: "화", time: "09:30~11:30", name: "문해1단계(화)" },
+      { id: "P039", location: "2층빨강배움터1", day: "수", time: "09:00~12:00", name: "문해2단계(수)" },
+      { id: "P040", location: "2층빨강배움터1", day: "수", time: "13:00~14:20", name: "캐리커처(중급)" },
+      { id: "P041", location: "2층빨강배움터1", day: "수", time: "14:30~16:00", name: "캐리커처(초급)" },
+      { id: "P042", location: "2층빨강배움터1", day: "목", time: "09:30~11:30", name: "문해1단계(목)" },
+      { id: "P043", location: "2층빨강배움터1", day: "목", time: "13:00~14:00", name: "중국어(초급)" },
+      { id: "P044", location: "2층빨강배움터1", day: "목", time: "14:00~15:00", name: "중국어(중급)" },
+      { id: "P045", location: "2층빨강배움터1", day: "금", time: "09:00~12:00", name: "문해2단계(금)" },
+      { id: "P046", location: "2층빨강배움터2", day: "월", time: "13:00~15:00", name: "시니어글쓰기" },
+      { id: "P047", location: "2층빨강배움터2", day: "화", time: "10:00~11:30", name: "미술교실(중급)" },
+      { id: "P048", location: "2층빨강배움터2", day: "화", time: "13:00~14:30", name: "미술교실(초급)" },
+      { id: "P049", location: "2층빨강배움터2", day: "수", time: "11:00~12:00", name: "영어회화(기초)" },
+      { id: "P050", location: "2층빨강배움터2", day: "수", time: "13:00~14:00", name: "영어회화(초급)" },
+      { id: "P051", location: "2층빨강배움터2", day: "수", time: "14:00~15:00", name: "영어회화(중급)" },
+      { id: "P052", location: "2층빨강배움터2", day: "금", time: "09:30~11:30", name: "캘리그라피 중급" },
+      { id: "P053", location: "2층빨강배움터2", day: "금", time: "13:00~15:00", name: "캘리그라피 초급" },
+      { id: "P054", location: "2층빨강배움터3", day: "월", time: "10:00~11:00", name: "우쿨렐레(초급)" },
+      { id: "P055", location: "2층빨강배움터3", day: "월", time: "11:00~12:00", name: "우쿨렐레(중급)" },
+      { id: "P056", location: "2층빨강배움터3", day: "목", time: "13:00~14:00", name: "한문(동양고전)" },
+      { id: "P057", location: "2층빨강배움터3", day: "금", time: "11:00~12:00", name: "일본어(기초)" },
+      { id: "P058", location: "2층빨강배움터3", day: "금", time: "13:00~14:00", name: "일본어(초급)" },
+      { id: "P059", location: "2층빨강배움터3", day: "금", time: "14:00~15:00", name: "일본어(중급)" },
+      { id: "P060", location: "서예실", day: "월", time: "10:00~12:00", name: "사군자" },
+      { id: "P061", location: "서예실", day: "화", time: "10:00~12:00", name: "한글서예(중급)" },
+      { id: "P062", location: "서예실", day: "화", time: "13:00~15:00", name: "한글서예(초급)" },
+      { id: "P063", location: "지하1층작은마당", day: "화", time: "10:00~11:00", name: "국선도 중급" },
+      { id: "P064", location: "서예실", day: "수", time: "10:00~12:00", name: "한국화" },
+      { id: "P065", location: "서예실", day: "목", time: "10:00~12:00", name: "서예 중급" },
+      { id: "P066", location: "서예실", day: "금", time: "10:00~12:00", name: "서예 초급" },
+      { id: "P067", location: "지하1층작은마당", day: "월", time: "13:00~14:00", name: "가락장구(중)" },
+      { id: "P068", location: "지하1층작은마당", day: "월", time: "14:00~15:00", name: "민요교실" },
+      { id: "P069", location: "지하1층작은마당", day: "월", time: "15:00~16:00", name: "가락장구(초)" },
+      { id: "P070", location: "지하1층작은마당", day: "화", time: "13:00~15:00", name: "장수풍물(동아리)" },
+      { id: "P071", location: "지하1층작은마당", day: "수", time: "13:00~15:00", name: "청춘 실버악단(동아리)" },
+      { id: "P072", location: "지하1층작은마당", day: "금", time: "13:00~14:00", name: "퓨전난타(초급)" },
+      { id: "P073", location: "지하1층작은마당", day: "금", time: "14:00~15:00", name: "퓨전난타(중급)" },
+      { id: "P074", location: "지하1층작은마당", day: "금", time: "15:00~17:00", name: "난타공연반" },
+
+      { id: "P075", location: "ICT지식마루", day: "월", time: "10:00~12:00", name: "스마트폰(기초)오전", driveFolder: "ICT지식마루" },
+      { id: "P076", location: "ICT지식마루", day: "월", time: "13:00~15:00", name: "스마트폰(기초)오후", driveFolder: "ICT지식마루" },
+      { id: "P077", location: "ICT지식마루", day: "화", time: "10:00~12:00", name: "스마트폰(활용)오전", driveFolder: "ICT지식마루" },
+      { id: "P078", location: "ICT지식마루", day: "화", time: "13:00~15:00", name: "스마트폰(활용)오후", driveFolder: "ICT지식마루" },
+      { id: "P079", location: "ICT지식마루", day: "수", time: "10:00~12:00", name: "컴퓨터(초급A)", driveFolder: "ICT지식마루" },
+      { id: "P080", location: "ICT지식마루", day: "수", time: "13:00~15:00", name: "컴퓨터(중급)", driveFolder: "ICT지식마루" },
+      { id: "P081", location: "ICT지식마루", day: "목", time: "10:00~12:00", name: "컴퓨터(초급B)", driveFolder: "ICT지식마루" },
+      { id: "P082", location: "ICT지식마루", day: "금", time: "10:00~12:00", name: "태블릿PC", driveFolder: "ICT지식마루" }
+    ];
+
+    function getFloorLevel(location) {
+      if (location.includes("지하1층")) return -1;
+      if (location.includes("서예실") || location.includes("ICT지식마루") || location.includes("1층")) return 1;
+      if (location.includes("2층")) return 2;
+      if (location.includes("3층")) return 3;
+      return 99;
+    }
+
+    function getStartMinutes(timeStr) {
+      const start = timeStr.split('~')[0].trim();
+      const [h, m] = start.split(':').map(Number);
+      return (h * 60) + (m || 0);
+    }
+
+    function getMonthWeekKey(d = new Date()) {
+      const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const year = target.getFullYear();
+      const month = target.getMonth() + 1;
+      
+      const firstDayOfMonth = new Date(year, target.getMonth(), 1);
+      const dayOfWeekOfFirst = firstDayOfMonth.getDay();
+      
+      const currentDate = target.getDate();
+      let weekNum = Math.ceil((currentDate + (dayOfWeekOfFirst === 0 ? 6 : dayOfWeekOfFirst - 1)) / 7);
+
+      return `${year}-${month}-W${String(weekNum).padStart(2, '0')}`;
+    }
+
+    function formatWeekTitle(weekKey) {
+      if (!weekKey) return "주차 정보 없음";
+      const parts = weekKey.split('-');
+      if (parts.length < 3) return weekKey;
+      const year = parts[0];
+      const month = parseInt(parts[1], 10);
+      const week = parseInt(parts[2].replace('W', ''), 10);
+      return `${year}년 ${month}월 ${week}주차`;
+    }
+
+    function calculateClassDateStr(weekKey, dayStr) {
+      if (!weekKey || !weekKey.includes('-W')) {
+        const now = new Date();
+        return `${now.getMonth() + 1}.${String(now.getDate()).padStart(2, '0')}`;
+      }
+
+      const parts = weekKey.split('-');
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10);
+      const weekNum = parseInt(parts[2].replace('W', ''), 10);
+
+      const firstDay = new Date(year, month - 1, 1);
+      let firstDayOfWeek = firstDay.getDay();
+      if (firstDayOfWeek === 0) firstDayOfWeek = 7;
+
+      const firstMondayDateNum = 1 - (firstDayOfWeek - 1);
+      const targetMondayDateNum = firstMondayDateNum + (weekNum - 1) * 7;
+
+      const dayMap = { "월": 0, "화": 1, "수": 2, "목": 3, "금": 4 };
+      const addDays = dayMap[dayStr] !== undefined ? dayMap[dayStr] : 0;
+
+      const targetDate = new Date(year, month - 1, targetMondayDateNum + addDays);
+
+      return `${targetDate.getMonth() + 1}.${String(targetDate.getDate()).padStart(2, '0')}`;
+    }
+
+    function inferDateFromMD(month, day) {
+      const now = new Date();
+      let d = new Date(now.getFullYear(), month - 1, day);
+      if (d.getTime() - now.getTime() > 45 * 24 * 60 * 60 * 1000) {
+        d = new Date(now.getFullYear() - 1, month - 1, day);
+      }
+      return d;
+    }
+
+    function parseFileDate(fileName) {
+      const m = /^(\d{1,2})\.(\d{1,2})_/.exec(fileName || "");
+      if (!m) return null;
+      const month = Number(m[1]), day = Number(m[2]);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      return inferDateFromMD(month, day);
+    }
+
+    function calculateWeekFromDateStr(dateStr) {
+      if (!dateStr || !dateStr.includes('.')) return getMonthWeekKey();
+      const [month, day] = dateStr.split('.').map(Number);
+      return getMonthWeekKey(inferDateFromMD(month, day));
+    }
+
+    function parseWeekKey(weekKey) {
+      const p = weekKey.split('-');
+      return { year: parseInt(p[0], 10), month: parseInt(p[1], 10), week: parseInt(p[2].replace('W', ''), 10) };
+    }
+
+    function monthKeyOf(date) {
+      return `${date.getFullYear()}-${date.getMonth() + 1}`;
+    }
+
+    function shiftMonth(year, month, delta) {
+      const d = new Date(year, month - 1 + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() + 1 };
+    }
+
+    function getWeekOfDate(date) {
+      return parseInt(getMonthWeekKey(date).split('-W')[1], 10);
+    }
+
+    function getWeeksInMonth(year, month) {
+      const d = new Date(year, month, 0);
+      while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+      return getWeekOfDate(d);
+    }
+
+    const matchCache = new Map();
+    function matchProgram(fileName) {
+      if (matchCache.has(fileName)) return matchCache.get(fileName);
+      const result = matchProgramUncached(fileName);
+      matchCache.set(fileName, result);
+      return result;
+    }
+
+    function matchProgramUncached(fileName) {
+      const base = (fileName || "").replace(/^\d{1,2}\.\d{1,2}_/, '').replace(/\.[^.]+$/, '');
+      let candidates = rawData.filter(d => d.name === base);
+      if (candidates.length === 0) candidates = rawData.filter(d => (fileName || "").includes(d.name));
+      if (candidates.length <= 1) return candidates[0] || null;
+      const date = parseFileDate(fileName);
+      if (date) {
+        const dayChar = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+        const byDay = candidates.find(d => d.day === dayChar);
+        if (byDay) return byDay;
+      }
+      return candidates[0];
+    }
+
+    let db;
+    let isArchiveView = false;
+    let currentViewingWeek = getMonthWeekKey();
+    let remoteFileListCache = [];
+
+    const dbRequest = indexedDB.open("TimetableAppDB_MultiWeek", 5);
+    dbRequest.onupgradeneeded = (e) => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains("photos")) db.createObjectStore("photos", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("archive_photos")) db.createObjectStore("archive_photos", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta", { keyPath: "key" });
+    };
+
+    dbRequest.onsuccess = async (e) => {
+      db = e.target.result;
+      await checkAndAutoArchiveWeekly();
+
+      const savedList = await getMetaDB("remoteList");
+      const savedPending = await getMetaDB("pendingDeletes");
+      if (savedPending && savedPending.value) pendingDeletes = savedPending.value;
+      if (savedList && Array.isArray(savedList.value)) setRemoteFileList(applyPendingDeletes(savedList.value));
+      populateWeekSelector();
+      initDefaultDayTab();
+      await renderApp();
+      scrollToCurrentTimeSlot();
+
+      await fetchRemoteDrivePhotos();
+      renderApp();
+    };
+
+    let remoteVersion = 0;
+    function setRemoteFileList(list) {
+      remoteFileListCache = list;
+      remoteVersion++;
+    }
+
+    async function checkAndAutoArchiveWeekly() {
+      const realCurrentWeekKey = getMonthWeekKey();
+      const savedWeekObj = await getMetaDB("currentWeek");
+      const savedWeek = savedWeekObj ? savedWeekObj.value : null;
+
+      if (savedWeek && savedWeek !== realCurrentWeekKey) {
+        const currentPhotos = await getAllDB("photos");
+        await putManyDB("archive_photos", currentPhotos.map(item => ({ ...item, archiveWeek: savedWeek })));
+        await clearDB("photos");
+        await putDB("meta", { key: "currentWeek", value: realCurrentWeekKey });
+        showToast(`🎉 새로운 주차(${formatWeekTitle(realCurrentWeekKey)})가 시작되었습니다.`);
+      } else if (!savedWeek) {
+        await putDB("meta", { key: "currentWeek", value: realCurrentWeekKey });
+      }
+
+      currentViewingWeek = realCurrentWeekKey;
+      document.getElementById('current-week-badge').innerText = formatWeekTitle(realCurrentWeekKey);
+    }
+
+    const DELETE_GRACE_MS = 2 * 60 * 1000;
+    let pendingDeletes = {};
+
+    function savePendingDeletes() {
+      putDB("meta", { key: "pendingDeletes", value: pendingDeletes });
+    }
+
+    function addPendingDelete(name) {
+      pendingDeletes[name] = Date.now();
+      savePendingDeletes();
+    }
+
+    function removePendingDelete(name) {
+      delete pendingDeletes[name];
+      savePendingDeletes();
+    }
+
+    function applyPendingDeletes(fileList) {
+      const names = Object.keys(pendingDeletes);
+      if (names.length === 0) return fileList;
+      const present = new Set(fileList.map(f => f.name));
+      const hide = new Set();
+      let changed = false;
+      names.forEach(name => {
+        const expired = Date.now() - pendingDeletes[name] > DELETE_GRACE_MS;
+        if (!present.has(name) || expired) { delete pendingDeletes[name]; changed = true; }
+        else hide.add(name);
+      });
+      if (changed) savePendingDeletes();
+      return hide.size ? fileList.filter(f => !hide.has(f.name)) : fileList;
+    }
+
+    const deleteQueue = [];
+    const queuedDeleteNames = new Set();
+    let deleteRunning = false;
+    let resyncTimer = null;
+
+    function enqueueDelete(name, driveFolder = "") {
+      if (queuedDeleteNames.has(name)) return;
+      queuedDeleteNames.add(name);
+      deleteQueue.push({ name, driveFolder });
+      runDeleteQueue();
+    }
+
+    async function sendDeleteWithRetry(name, driveFolder = "") {
+      const url = `${GAS_URL}?action=delete&targetKey=${encodeURIComponent(name)}` + (driveFolder ? `&driveFolder=${encodeURIComponent(driveFolder)}` : "");
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const res = await fetch(url, { method: 'GET' });
+          const json = await res.json();
+          if (json && json.result === "success") return true;
+        } catch (err) {
+          console.warn(`드라이브 삭제 재시도 (${attempt}/3):`, name, err);
+        }
+        await new Promise(r => setTimeout(r, 1000 * attempt));
+      }
+      return false;
+    }
+
+    async function runDeleteQueue() {
+      if (deleteRunning) return;
+      deleteRunning = true;
+      let failedCount = 0;
+      while (deleteQueue.length > 0) {
+        const { name, driveFolder } = deleteQueue.shift();
+        showToast(`드라이브에서 삭제 중... (남은 ${deleteQueue.length + 1}장)`, true, 60000);
+        const ok = await sendDeleteWithRetry(name, driveFolder);
+        queuedDeleteNames.delete(name);
+        if (!ok) {
+          failedCount++;
+          removePendingDelete(name);
+        }
+      }
+      deleteRunning = false;
+      showToast(failedCount ? `${failedCount}장은 삭제하지 못했어요. 다시 표시됩니다` : "드라이브 삭제 완료!", false, 4000);
+
+      clearTimeout(resyncTimer);
+      resyncTimer = setTimeout(() => fetchRemoteDrivePhotos().then(renderApp), failedCount ? 500 : 5000);
+    }
+
+    let syncInFlight = null;
+    function fetchRemoteDrivePhotos() {
+      if (syncInFlight) return syncInFlight;
+      syncInFlight = doFetchRemoteDrivePhotos().finally(() => { syncInFlight = null; });
+      return syncInFlight;
+    }
+
+    async function doFetchRemoteDrivePhotos() {
+      try {
+        showToast("구글 드라이브 최신 사진 동기화 중...");
+        const nowDate = new Date();
+        const prevM = shiftMonth(nowDate.getFullYear(), nowDate.getMonth() + 1, -1);
+        const monthsParam = `${prevM.year}-${prevM.month},${nowDate.getFullYear()}-${nowDate.getMonth() + 1}`;
+        const res = await fetch(`${GAS_URL}?months=${monthsParam}&t=${Date.now()}`);
+        if (!res.ok) throw new Error("서버 응답 오류");
+        const rawList = await res.json();
+        if (!Array.isArray(rawList)) throw new Error("목록 형식 오류");
+        const fileList = applyPendingDeletes(rawList);
+
+        setRemoteFileList(fileList);
+        putDB("meta", { key: "remoteList", value: fileList });
+
+        const realCurrentWeekKey = getMonthWeekKey();
+        const [curPhotos, archPhotos] = await Promise.all([getAllDB("photos"), getAllDB("archive_photos")]);
+        const curIds = new Set(curPhotos.map(p => p.id));
+        const archIds = new Set(archPhotos.map(p => p.id));
+        const newCur = [];
+        const newArch = [];
+
+        for (const file of fileList) {
+          const info = matchProgram(file.name);
+          if (!info) continue;
+          const pid = info.id;
+          const driveImgUrl = `https://lh3.googleusercontent.com/d/${file.id}`;
+          const nameDatePart = file.name.split('_')[0];
+          const fileWeekKey = calculateWeekFromDateStr(nameDatePart);
+          const dateStr = `${nameDatePart} (드라이브동기화)`;
+
+          if (fileWeekKey === realCurrentWeekKey) {
+            if (!curIds.has(pid)) {
+              curIds.add(pid);
+              newCur.push({ id: pid, dataUrl: driveImgUrl, dateStr, driveId: file.id, fileName: file.name, weekKey: fileWeekKey });
+            }
+          } else {
+            const archiveId = `${fileWeekKey}_${pid}`;
+            if (!archIds.has(archiveId)) {
+              archIds.add(archiveId);
+              newArch.push({ id: archiveId, originalId: pid, dataUrl: driveImgUrl, dateStr, driveId: file.id, fileName: file.name, archiveWeek: fileWeekKey });
+            }
+          }
+        }
+
+        await Promise.all([putManyDB("photos", newCur), putManyDB("archive_photos", newArch)]);
+        showToast("동기화 완료!", false);
+      } catch (err) {
+        console.warn("드라이브 동기화 참고:", err);
+      }
+    }
+
+    function populateWeekSelector() {
+      const selector = document.getElementById('week-selector');
+      selector.innerHTML = '';
+
+      const now = new Date();
+      const currentWeekKey = getMonthWeekKey(now);
+      const thisM = { year: now.getFullYear(), month: now.getMonth() + 1, label: '이번 달' };
+      const lastM = { ...shiftMonth(thisM.year, thisM.month, -1), label: '지난 달' };
+
+      [thisM, lastM].forEach(m => {
+        const group = document.createElement('optgroup');
+        group.label = `${m.label} (${m.year}년 ${m.month}월)`;
+
+        let weekCount = getWeeksInMonth(m.year, m.month);
+        if (m === thisM) weekCount = Math.max(weekCount, parseWeekKey(currentWeekKey).week);
+
+        for (let w = 1; w <= weekCount; w++) {
+          const key = `${m.year}-${m.month}-W${String(w).padStart(2, '0')}`;
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.innerText = formatWeekTitle(key) + (key === currentWeekKey ? " (현재 이번 주)" : "");
+          if (key === currentViewingWeek) opt.selected = true;
+          group.appendChild(opt);
+        }
+        selector.appendChild(group);
+      });
+    }
+
+    let toastTimer = null;
+    function showToast(msg, isLoading = true, duration = 2500) {
+      const toast = document.getElementById('toast');
+      const icon = document.getElementById('toast-icon');
+      const text = document.getElementById('toast-msg');
+      text.innerText = msg;
+      icon.className = isLoading ? "fa-solid fa-spinner fa-spin text-emerald-400" : "fa-solid fa-circle-check text-emerald-400";
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, duration);
+    }
+
+    function compressImageFile(file, maxWidth = 1280, quality = 0.75) {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          URL.revokeObjectURL(objectUrl);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("이미지 로드 실패")); };
+        img.src = objectUrl;
+      });
+    }
+
+    function getMetaDB(key) {
+      return new Promise((resolve) => {
+        const tx = db.transaction("meta", "readonly");
+        const req = tx.objectStore("meta").get(key);
+        req.onsuccess = () => resolve(req.result);
+      });
+    }
+
+    function getPhotoDB(storeName, id) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).get(id);
+        req.onsuccess = () => resolve(req.result);
+      });
+    }
+
+    const dbCache = {};
+    const CACHED_STORES = ["photos", "archive_photos"];
+
+    function cacheUpsert(storeName, item) {
+      const list = dbCache[storeName];
+      if (!list) return;
+      const idx = list.findIndex(x => x.id === item.id);
+      if (idx >= 0) list[idx] = item; else list.push(item);
+    }
+
+    function putDB(storeName, item) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).put(item);
+        tx.oncomplete = () => {
+          if (CACHED_STORES.includes(storeName)) cacheUpsert(storeName, item);
+          resolve();
+        };
+      });
+    }
+
+    function putManyDB(storeName, items) {
+      if (!items.length) return Promise.resolve();
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readwrite");
+        const store = tx.objectStore(storeName);
+        items.forEach(item => store.put(item));
+        tx.oncomplete = () => {
+          if (CACHED_STORES.includes(storeName)) items.forEach(item => cacheUpsert(storeName, item));
+          resolve();
+        };
+      });
+    }
+
+    function getAllDB(storeName) {
+      if (dbCache[storeName]) return Promise.resolve(dbCache[storeName].slice());
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readonly");
+        const req = tx.objectStore(storeName).getAll();
+        req.onsuccess = () => {
+          const result = req.result || [];
+          if (CACHED_STORES.includes(storeName)) dbCache[storeName] = result;
+          resolve(result.slice());
+        };
+      });
+    }
+
+    function deleteDB(storeName, id) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).delete(id);
+        tx.oncomplete = () => {
+          if (dbCache[storeName]) dbCache[storeName] = dbCache[storeName].filter(x => x.id !== id);
+          resolve();
+        };
+      });
+    }
+
+    function clearDB(storeName) {
+      return new Promise((resolve) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).clear();
+        tx.oncomplete = () => {
+          if (dbCache[storeName]) dbCache[storeName] = [];
+          resolve();
+        };
+      });
+    }
+
+    let monthlyCountCache = { key: null, map: null };
+    function getMonthlyCountMap(viewingMonthKey) {
+      const cacheKey = `${remoteVersion}|${viewingMonthKey}`;
+      if (monthlyCountCache.key === cacheKey) return monthlyCountCache.map;
+      const map = new Map();
+      remoteFileListCache.forEach(file => {
+        const fileDate = parseFileDate(file.name);
+        if (!fileDate || monthKeyOf(fileDate) !== viewingMonthKey) return;
+        const item = matchProgram(file.name);
+        if (item) map.set(item.id, (map.get(item.id) || 0) + 1);
+      });
+      monthlyCountCache = { key: cacheKey, map };
+      return map;
+    }
+
+    function thumbUrl(url) {
+      return (url && url.startsWith("https://lh3.googleusercontent.com/d/") && !url.includes("=")) ? url + "=w640" : url;
+    }
+
+    let activeDay = "전체";
+    let activeTargetId = null;
+
+    let renderSeq = 0;
+    async function renderApp() {
+      const mySeq = ++renderSeq;
+      const realCurrentWeekKey = getMonthWeekKey();
+      isArchiveView = (currentViewingWeek !== realCurrentWeekKey);
+
+      const activeStore = isArchiveView ? "archive_photos" : "photos";
+      const photosList = await getAllDB(activeStore);
+      if (mySeq !== renderSeq) return;
+
+      const photoMap = new Map();
+      photosList.forEach(item => {
+        if (isArchiveView) {
+          if (item.archiveWeek === currentViewingWeek) {
+            photoMap.set(item.originalId || item.id, item);
+          }
+        } else {
+          photoMap.set(item.id, item);
+        }
+      });
+
+      const now = new Date();
+      const viewing = parseWeekKey(currentViewingWeek);
+      const currentMonthNum = viewing.month;
+      const viewingMonthKey = `${viewing.year}-${viewing.month}`;
+      const isCurrentMonthView = (viewing.year === now.getFullYear() && viewing.month === now.getMonth() + 1);
+      const monthLabel = isCurrentMonthView ? '이번 달' : `${viewing.month}월`;
+
+      const monthlyCountMap = getMonthlyCountMap(viewingMonthKey);
+
+      const mandatoryItems = rawData.filter(d => !d.isOptional);
+      const mandatoryTotal = mandatoryItems.length;
+      
+      const mandatoryWeekCompleted = mandatoryItems.filter(d => photoMap.has(d.id)).length;
+      const weekPercent = Math.round((mandatoryWeekCompleted / mandatoryTotal) * 100);
+
+      const mandatoryMonthCompleted = mandatoryItems.filter(d => (monthlyCountMap.get(d.id) || 0) > 0).length;
+      const monthPercent = Math.round((mandatoryMonthCompleted / mandatoryTotal) * 100);
+
+      const warningItems = mandatoryItems.filter(d => (monthlyCountMap.get(d.id) || 0) === 0);
+      const warningCount = warningItems.length;
+
+      document.getElementById('progress-week-text').innerText = `📅 ${isArchiveView ? '선택 주차' : '이번 주'} 필수: ${mandatoryWeekCompleted} / ${mandatoryTotal} (${weekPercent}%)`;
+      document.getElementById('progress-week-bar').style.width = `${weekPercent}%`;
+
+      document.getElementById('progress-month-text').innerText = `🗓️ ${currentMonthNum}월 누적 필수: ${mandatoryMonthCompleted} / ${mandatoryTotal} (${monthPercent}%)`;
+      document.getElementById('progress-month-bar').style.width = `${monthPercent}%`;
+      
+      document.getElementById('warning-count-badge').innerText = `${monthLabel} 0회 ${warningCount}개`;
+
+      const banner = document.getElementById('archive-banner');
+      if (isArchiveView) {
+        banner.classList.remove('hidden');
+        document.getElementById('archive-banner-text').innerText = `[${formatWeekTitle(currentViewingWeek)} 보관함]을 조회 중입니다.`;
+      } else {
+        banner.classList.add('hidden');
+      }
+
+      const searchTerm = document.getElementById('search-input').value.trim().toLowerCase();
+      const statusFilter = document.getElementById('status-filter').value;
+
+      let filtered = rawData.filter(item => {
+        const matchDay = (activeDay === "전체" || item.day === activeDay);
+        const matchSearch = item.name.toLowerCase().includes(searchTerm) || item.location.toLowerCase().includes(searchTerm);
+        const isDone = photoMap.has(item.id);
+        const monthUploads = monthlyCountMap.get(item.id) || 0;
+        
+        let matchStatus = true;
+        if (statusFilter === "danger") {
+          matchStatus = !item.isOptional && monthUploads === 0;
+        } else if (statusFilter === "pending") {
+          matchStatus = !isDone && !item.isOptional;
+        } else if (statusFilter === "done") {
+          matchStatus = isDone;
+        } else if (statusFilter === "optional") {
+          matchStatus = item.isOptional;
+        }
+
+        return matchDay && matchSearch && matchStatus;
+      });
+
+      filtered.sort((a, b) => {
+        const timeA = getStartMinutes(a.time);
+        const timeB = getStartMinutes(b.time);
+        if (timeA !== timeB) return timeA - timeB;
+
+        const floorA = getFloorLevel(a.location);
+        const floorB = getFloorLevel(b.location);
+        if (floorA !== floorB) return floorA - floorB;
+
+        return a.location.localeCompare(b.location);
+      });
+
+      const container = document.getElementById('cards-container');
+      const fragment = document.createDocumentFragment();
+
+      if (filtered.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-2xl p-8 text-center text-slate-400">
+            <i class="fa-solid fa-folder-open text-4xl mb-2 text-slate-300"></i>
+            <p class="text-sm">조건에 맞는 수업이 없습니다.</p>
+          </div>
+        `;
+        return;
+      }
+
+      filtered.forEach(item => {
+        const photoData = photoMap.get(item.id);
+        const isCompleted = !!photoData;
+        const monthCount = monthlyCountMap.get(item.id) || 0;
+        const isDanger = !item.isOptional && monthCount === 0;
+
+        const card = document.createElement('div');
+        card.dataset.start = getStartMinutes(item.time);
+        card.className = `bg-white rounded-2xl p-4 shadow-sm border transition-all ${
+          isDanger 
+            ? 'border-rose-400 bg-rose-50/30' 
+            : (isCompleted ? 'border-emerald-300 bg-emerald-50/20' : (item.isOptional ? 'border-slate-200 bg-slate-50/40' : 'border-slate-200'))
+        }`;
+
+        card.innerHTML = `
+          <div class="flex items-start justify-between gap-2 mb-2">
+            <div>
+              <div class="flex items-center gap-1.5 mb-1 flex-wrap">
+                <span class="bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded text-xs">${item.day}요일</span>
+                <span class="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-xs font-mono"><i class="fa-regular fa-clock text-indigo-500 mr-1"></i>${item.time}</span>
+                ${item.isOptional ? `<span class="bg-slate-200 text-slate-600 px-1.5 py-0.2 rounded text-[10px] font-semibold">선택(기타)</span>` : ''}
+                
+                <span class="px-2 py-0.2 rounded text-[10px] font-bold ${isDanger ? 'bg-rose-600 text-white animate-pulse' : 'bg-slate-200 text-slate-700'}">
+                  ${currentMonthNum}월 촬영: ${monthCount}회
+                </span>
+              </div>
+              <h3 class="font-bold text-slate-800 text-base leading-snug flex items-center gap-1">
+                ${isDanger ? `<i class="fa-solid fa-triangle-exclamation text-rose-500 text-sm"></i>` : ''}
+                ${item.name}
+              </h3>
+              <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                <i class="fa-solid fa-location-dot text-indigo-400"></i> ${item.location}
+              </p>
+            </div>
+            <div>
+              ${isCompleted 
+                ? `<span class="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold shrink-0"><i class="fa-solid fa-circle-check"></i> 완료</span>`
+                : (item.isOptional 
+                    ? `<span class="inline-flex items-center gap-1 bg-slate-100 text-slate-400 px-2.5 py-1 rounded-full text-xs shrink-0"><i class="fa-solid fa-circle-minus"></i> 선택사항</span>`
+                    : (isDanger 
+                        ? `<span class="inline-flex items-center gap-1 bg-rose-100 text-rose-700 border border-rose-300 px-2.5 py-1 rounded-full text-xs font-bold shrink-0"><i class="fa-solid fa-triangle-exclamation"></i> 0회(필수등록)</span>`
+                        : `<span class="inline-flex items-center gap-1 bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full text-xs shrink-0"><i class="fa-regular fa-clock"></i> 미완료</span>`))}
+            </div>
+          </div>
+
+          ${isCompleted ? `
+            <div class="mt-3 relative rounded-xl overflow-hidden border border-slate-300 bg-slate-900 aspect-video group cursor-pointer shadow-inner" onclick="openPhotoModal('${item.id}')">
+              <img src="${thumbUrl(photoData.dataUrl)}" data-full="${photoData.dataUrl}" onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=this.dataset.full}" loading="lazy" decoding="async" alt="${item.name}" class="w-full h-full object-cover">
+              
+              <div class="absolute inset-0 bg-black/30 group-hover:bg-black/40 transition flex flex-col justify-between p-3 text-white">
+                <div class="flex justify-between items-center">
+                  <span class="bg-black/60 backdrop-blur px-2 py-0.5 rounded text-[10px] text-emerald-300 font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-cloud-arrow-up text-xs"></i> 구글 드라이브 동기화됨
+                  </span>
+                  <span class="bg-black/60 backdrop-blur px-2 py-0.5 rounded text-[10px] font-mono text-slate-200">${photoData.dateStr}</span>
+                </div>
+                <div class="flex justify-end gap-2">
+                  <span class="bg-indigo-600/90 text-white px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 shadow">
+                    <i class="fa-solid fa-eye"></i> 크게 보기 / 삭제
+                  </span>
+                </div>
+              </div>
+            </div>
+          ` : `
+            <button onclick="openUploadTypeModal('${item.id}')" class="w-full mt-2 py-3 ${isDanger ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-md' : (item.isOptional ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-600' : 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-700')} border rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition active:scale-[0.99]">
+              <i class="fa-solid fa-camera text-base"></i> ${isArchiveView ? `[${formatWeekTitle(currentViewingWeek)}] 사진 추가 등록` : (isDanger ? '⚠️ 이번 달 최초 사진 촬영 등록' : (item.isOptional ? '사진 촬영 / 선택 등록' : '사진 촬영 / 등록하기'))}
+            </button>
+          `}
+        `;
+        fragment.appendChild(card);
+      });
+      container.replaceChildren(fragment);
+    }
+
+    function exitArchiveView() {
+      currentViewingWeek = getMonthWeekKey();
+      document.getElementById('week-selector').value = currentViewingWeek;
+      renderApp();
+    }
+
+    async function openPhotoModal(id) {
+      const activeStore = isArchiveView ? "archive_photos" : "photos";
+      const photos = await getAllDB(activeStore);
+      
+      const photoData = photos.find(p => isArchiveView 
+        ? (p.archiveWeek === currentViewingWeek && (p.originalId === id || p.id === `${currentViewingWeek}_${id}`))
+        : p.id === id
+      );
+      
+      const itemInfo = rawData.find(r => r.id === id);
+
+      if (!photoData || !itemInfo) return;
+
+      document.getElementById('modal-title').innerText = `[${itemInfo.day}요일 ${itemInfo.location}] ${itemInfo.name}`;
+      document.getElementById('modal-date').innerText = `촬영 및 동기화: ${photoData.dateStr}`;
+      document.getElementById('modal-img').src = photoData.dataUrl;
+
+      const retakeBtn = document.getElementById('modal-retake-btn');
+      const deleteBtn = document.getElementById('modal-delete-btn');
+
+      retakeBtn.style.display = 'flex';
+      deleteBtn.style.display = 'flex';
+
+      retakeBtn.onclick = () => {
+        closePhotoModal();
+        openUploadTypeModal(id);
+      };
+
+      deleteBtn.onclick = async () => {
+        if (confirm('구글 드라이브 및 스마트폰에서 이 사진을 완전 삭제하시겠습니까?')) {
+          const targetName = photoData.fileName || itemInfo.name;
+          addPendingDelete(targetName);
+
+          if (isArchiveView) {
+            await deleteDB("archive_photos", photoData.id);
+          } else {
+            await deleteDB("photos", id);
+          }
+          setRemoteFileList(remoteFileListCache.filter(f => f.name !== targetName));
+          closePhotoModal();
+          renderApp();
+          showToast("구글 드라이브 사진 삭제 중...");
+
+          enqueueDelete(targetName, itemInfo.driveFolder || "");
+        }
+      };
+
+      document.getElementById('photo-modal').classList.remove('hidden');
+    }
+
+    function closePhotoModal() {
+      document.getElementById('photo-modal').classList.add('hidden');
+    }
+
+    document.getElementById('modal-close-btn').addEventListener('click', closePhotoModal);
+
+    function openUploadTypeModal(id) {
+      activeTargetId = id;
+      document.getElementById('upload-type-modal').classList.remove('hidden');
+    }
+
+    function closeUploadTypeModal() {
+      document.getElementById('upload-type-modal').classList.add('hidden');
+    }
+
+    document.getElementById('choose-camera-btn').addEventListener('click', () => {
+      closeUploadTypeModal();
+      setTimeout(() => {
+        const input = document.getElementById('camera-input');
+        input.value = "";
+        input.click();
+      }, 50);
+    });
+
+    document.getElementById('choose-gallery-btn').addEventListener('click', () => {
+      closeUploadTypeModal();
+      setTimeout(() => {
+        const input = document.getElementById('gallery-input');
+        input.value = "";
+        input.click();
+      }, 50);
+    });
+
+    async function handleFileSelected(file) {
+      if (!file || !activeTargetId) return;
+      const targetId = activeTargetId;
+      activeTargetId = null;
+      const info = rawData.find(r => r.id === targetId);
+      if (!info) return;
+
+      showToast("이미지 압축 중...");
+      let compressedDataUrl;
+      try {
+        compressedDataUrl = await compressImageFile(file);
+      } catch (err) {
+        showToast("이미지를 불러오지 못했습니다", false);
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+      const uploadWeek = currentViewingWeek;
+      const calculatedDateStr = calculateClassDateStr(uploadWeek, info.day);
+      const fileName = `${calculatedDateStr}_${info.name}.jpg`;
+      const dateStr = `${calculatedDateStr} ${timeStr}`;
+
+      if (isArchiveView) {
+        await putDB("archive_photos", {
+          id: `${uploadWeek}_${targetId}`,
+          originalId: targetId,
+          dataUrl: compressedDataUrl,
+          dateStr,
+          fileName,
+          archiveWeek: uploadWeek
+        });
+      } else {
+        await putDB("photos", { id: targetId, dataUrl: compressedDataUrl, dateStr, fileName, weekKey: getMonthWeekKey() });
+      }
+
+      if (pendingDeletes[fileName]) removePendingDelete(fileName);
+
+      if (!remoteFileListCache.some(f => f.name === fileName)) {
+        setRemoteFileList([...remoteFileListCache, { name: fileName, id: "", folder: "" }]);
+      }
+      renderApp();
+
+      showToast("구글 드라이브 전송 중...", true, 60000);
+      try {
+        await fetch(GAS_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({ fileName: fileName, programName: info.name, driveFolder: info.driveFolder || "", dataUrl: compressedDataUrl })
+        });
+        showToast("드라이브 저장 완료!", false);
+      } catch (err) {
+        console.warn("드라이브 전송 완료:", err);
+      }
+
+      fetchRemoteDrivePhotos().then(renderApp);
+    }
+
+    document.getElementById('camera-input').addEventListener('change', function(e) {
+      handleFileSelected(e.target.files[0]);
+      e.target.value = "";
+    });
+
+    document.getElementById('gallery-input').addEventListener('change', function(e) {
+      handleFileSelected(e.target.files[0]);
+      e.target.value = "";
+    });
+
+    document.getElementById('open-menu-btn').addEventListener('click', () => {
+      document.getElementById('menu-modal').classList.remove('hidden');
+    });
+
+    document.getElementById('menu-close-btn').addEventListener('click', () => {
+      document.getElementById('menu-modal').classList.add('hidden');
+    });
+
+    document.getElementById('load-week-btn').addEventListener('click', () => {
+      const selectedWeek = document.getElementById('week-selector').value;
+      currentViewingWeek = selectedWeek;
+      document.getElementById('menu-modal').classList.add('hidden');
+      renderApp();
+    });
+
+    document.getElementById('menu-sync-btn').addEventListener('click', async () => {
+      document.getElementById('menu-modal').classList.add('hidden');
+      await fetchRemoteDrivePhotos();
+      renderApp();
+    });
+
+    document.getElementById('menu-reset-btn').addEventListener('click', async () => {
+      document.getElementById('menu-modal').classList.add('hidden');
+      if (isArchiveView) {
+        alert('보관함 모드에서는 초기화 기능을 사용할 수 없습니다. 개별 사진 삭제를 이용해 주세요.');
+        return;
+      }
+      if (confirm('이번 주 찍은 사진들을 모두 삭제하고 초기화하시겠습니까?')) {
+        await clearDB("photos");
+        renderApp();
+        showToast("초기화 완료", false);
+      }
+    });
+
+    function setActiveDayTab(day) {
+      activeDay = day;
+      document.querySelectorAll('.day-tab').forEach(t => {
+        const isActive = t.dataset.day === day;
+        t.className = isActive
+          ? "day-tab active-tab bg-white text-indigo-700 font-bold px-4 py-1.5 rounded-full text-xs shadow shrink-0"
+          : "day-tab bg-indigo-600/70 text-white font-medium px-4 py-1.5 rounded-full text-xs shrink-0";
+        if (isActive) t.scrollIntoView({ block: 'nearest', inline: 'center' });
+      });
+    }
+
+    document.querySelectorAll('.day-tab').forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        setActiveDayTab(e.currentTarget.dataset.day);
+        renderApp();
+      });
+    });
+
+    function initDefaultDayTab() {
+      const today = ['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()];
+      setActiveDayTab(['월', '화', '수', '목', '금'].includes(today) ? today : '전체');
+    }
+
+    function scrollToCurrentTimeSlot() {
+      if (activeDay === "전체" || isArchiveView) return;
+      const cards = [...document.querySelectorAll('#cards-container > div[data-start]')];
+      if (cards.length === 0) return;
+
+      const now = new Date();
+      const limit = now.getHours() * 60 + now.getMinutes() + 10;
+      const starts = [...new Set(cards.map(c => Number(c.dataset.start)))].sort((a, b) => a - b);
+      const slot = starts.filter(t => t <= limit).pop() ?? starts[0];
+      const target = cards.find(c => Number(c.dataset.start) === slot);
+      if (!target || target === cards[0]) return;
+
+      const headerHeight = document.querySelector('header').offsetHeight;
+      const top = target.getBoundingClientRect().top + window.scrollY - headerHeight - 8;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    }
+
+    let searchTimer = null;
+    document.getElementById('search-input').addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(renderApp, 120);
+    });
+    document.getElementById('status-filter').addEventListener('change', renderApp);
+
+    function getMonthTarget(which) {
+      const now = new Date();
+      return which === 'last'
+        ? shiftMonth(now.getFullYear(), now.getMonth() + 1, -1)
+        : { year: now.getFullYear(), month: now.getMonth() + 1 };
+    }
+
+    function updateZipButtonLabels() {
+      document.getElementById('zip-this-month-label').innerText = `이번 달 (${getMonthTarget('this').month}월)`;
+      document.getElementById('zip-last-month-label').innerText = `지난 달 (${getMonthTarget('last').month}월)`;
+    }
+    updateZipButtonLabels();
+
+    async function downloadMonthZip(which) {
+      document.getElementById('menu-modal').classList.add('hidden');
+      const { year, month } = getMonthTarget(which);
+      const monthKey = `${year}-${month}`;
+
+      showToast(`${month}월 사진 목록 확인 중...`, true, 60000);
+      await fetchRemoteDrivePhotos();
+
+      const targets = new Map();
+      remoteFileListCache.forEach(f => {
+        const d = parseFileDate(f.name);
+        if (d && monthKeyOf(d) === monthKey) targets.set(f.name, { fileName: f.name, driveId: f.id });
+      });
+      const list = [...targets.values()];
+
+      if (list.length === 0) {
+        showToast("확인 완료", false);
+        alert(`${month}월에 다운로드할 사진이 없습니다!`);
+        return;
+      }
+
+      const [curPhotos, archPhotos] = await Promise.all([getAllDB("photos"), getAllDB("archive_photos")]);
+      const localByName = new Map();
+      [...curPhotos, ...archPhotos].forEach(p => {
+        if (p.fileName && p.dataUrl && p.dataUrl.startsWith("data:image")) localByName.set(p.fileName, p.dataUrl);
+      });
+
+      async function getPhotoContent(t) {
+        const local = localByName.get(t.fileName);
+        if (local) return { data: local.split(',')[1], options: { base64: true } };
+        try {
+          const r = await fetch(`https://lh3.googleusercontent.com/d/${t.driveId}`);
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return { data: await r.blob(), options: {} };
+        } catch (e1) {
+          const r2 = await fetch(`${GAS_URL}?action=getFile&id=${encodeURIComponent(t.driveId)}`);
+          const j = await r2.json();
+          if (!j.base64) throw new Error(j.error || "getFile 실패");
+          return { data: j.base64, options: { base64: true } };
+        }
+      }
+
+      const zip = new JSZip();
+      const rootFolder = zip.folder(`장수대학_${year}년_${month}월_수업사진`);
+      let done = 0, failed = 0, idx = 0;
+
+      async function worker() {
+        while (idx < list.length) {
+          const t = list[idx++];
+          try {
+            const { data, options } = await getPhotoContent(t);
+            const d = parseFileDate(t.fileName);
+            const prog = matchProgram(t.fileName);
+            const subName = (prog && prog.driveFolder) ? prog.driveFolder : `${d.getMonth() + 1}월 ${getWeekOfDate(d)}주차`;
+            rootFolder.folder(subName).file(t.fileName, data, options);
+          } catch (err) {
+            failed++;
+            console.warn("ZIP 제외:", t.fileName, err);
+          }
+          done++;
+          showToast(`ZIP 준비 중... (${done}/${list.length})`, true, 60000);
+        }
+      }
+      await Promise.all(Array.from({ length: 5 }, worker));
+
+      if (failed === list.length) {
+        showToast("ZIP 생성 실패", false);
+        alert('사진을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
+
+      showToast("ZIP 파일 생성 중...", true, 60000);
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `장수대학_${year}년_${month}월_사진.zip`);
+      showToast(failed ? `ZIP 다운로드 시작! (${failed}장 제외됨)` : "ZIP 다운로드 시작!", false);
+    }
+
+    document.getElementById('zip-this-month-btn').addEventListener('click', () => downloadMonthZip('this'));
+    document.getElementById('zip-last-month-btn').addEventListener('click', () => downloadMonthZip('last'));
+
+    // ==========================================
+    // ⛳ 스크린 파크골프 예약 명단 조회 관련 로직
+    // ==========================================
+    // 백엔드 URL (Render 배포 후 본인 API 주소로 변경: 예: https://xxx.onrender.com/api/reservations)
+    const GOLF_API_URL = "https://script.google.com/macros/s/AKfycbwvv2tJ-uG_u4y8aEE54HSEA-W1m78jS_1oPiP3OKONsGGt4-lvKLj1_hvhi2u6_2RUiA/exec?action=golf"; 
+
+    function openGolfModal() {
+      document.getElementById('golf-modal').classList.remove('hidden');
+      fetchGolfReservations();
+    }
+
+    function closeGolfModal() {
+      document.getElementById('golf-modal').classList.add('hidden');
+    }
+
+async function fetchGolfReservations() {
+  const container = document.getElementById('golf-list-container');
+  const dateBadge = document.getElementById('golf-date-badge');
+  
+  container.innerHTML = `
+    <div class="text-center py-8 text-slate-400 text-sm">
+      <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600"></i>
+      <p>엔컴 서버에서 예약 명단을 불러오는 중...</p>
+    </div>
+  `;
+
+  try {
+    const response = await fetch(GOLF_API_URL);
+    if (!response.ok) throw new Error("서버 응답 에러");
+    
+    const result = await response.json();
+
+    // 📌 백엔드(GAS)에서 에러 객체를 반환한 경우 처리
+    if (result.error) {
+      dateBadge.innerText = "조회 실패";
+      container.innerHTML = `
+        <div class="bg-rose-50 border border-rose-200 rounded-2xl p-5 text-center text-rose-700">
+          <i class="fa-solid fa-triangle-exclamation text-3xl mb-2 text-rose-500"></i>
+          <p class="text-xs font-bold mb-1">백엔드 오류 발생</p>
+          <p class="text-[11px] text-rose-600 bg-rose-100 p-2 rounded-lg font-mono break-all">${result.message || JSON.stringify(result)}</p>
+        </div>
+      `;
+      return;
+    }
+
+    dateBadge.innerText = `조회 날짜: ${result.date || '날짜 미지정'}`;
+
+    if (!result.data || result.data.length === 0) {
+      container.innerHTML = `
+        <div class="bg-white rounded-2xl p-6 text-center text-slate-400 border border-slate-200">
+          <i class="fa-solid fa-calendar-xmark text-3xl mb-2 text-slate-300"></i>
+          <p class="text-sm font-semibold">예약된 명단이 없습니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    container.innerHTML = "";
+    
+    result.data.forEach(slot => {
+      const card = document.createElement('div');
+      card.className = "bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2";
+
+      const renderMembers = (members) => {
+        if (!members || members.length === 0 || members[0] === "예약 없음") {
+          return `<span class="text-xs text-slate-400 font-medium">예약 없음</span>`;
+        }
+        return members.map(m => `
+          <span class="inline-block bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold px-2 py-0.5 rounded-md">
+            ${m}
+          </span>
+        `).join(' ');
+      };
+
+      card.innerHTML = `
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <span class="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+            <i class="fa-regular fa-clock text-emerald-600"></i> ${slot.time}
+          </span>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-2 pt-0.5">
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+            <div class="text-[11px] font-bold text-slate-500 mb-1 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-indigo-500"></span> 1번 타석
+            </div>
+            <div class="flex flex-wrap gap-1">
+              ${renderMembers(slot.court1)}
+            </div>
+          </div>
+
+          <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+            <div class="text-[11px] font-bold text-slate-500 mb-1 flex items-center gap-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span> 2번 타석
+            </div>
+            <div class="flex flex-wrap gap-1">
+              ${renderMembers(slot.court2)}
+            </div>
+          </div>
+        </div>
+      `;
+      container.appendChild(card);
+    });
+
+  } catch (error) {
+    console.error("골프 명단 불러오기 실패:", error);
+    dateBadge.innerText = "통신 에러";
+    container.innerHTML = `
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center text-rose-700">
+        <i class="fa-solid fa-circle-exclamation text-3xl mb-2 text-rose-500"></i>
+        <p class="text-xs font-bold">명단을 불러오지 못했습니다.</p>
+        <p class="text-[11px] text-rose-500 mt-1">GAS 웹 앱 응답에 실패했습니다.</p>
+      </div>
+    `;
+  }
+}
+  </script>
+</body>
+</html>
