@@ -261,7 +261,7 @@
   </div>
 
   <script>
-    const GAS_URL = "https://script.google.com/macros/s/AKfycbwd3kq1jBVT38_ptAvNGvjmoA-H7ISBVqiQse1Ns0ATIxOZa22k-O4aDmViCPxob5V7/exec";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwvv2tJ-uG_u4y8aEE54HSEA-W1m78jS_1oPiP3OKONsGGt4-lvKLj1_hvhi2u6_2RUiA/exec";
 
     const rawData = [
       { id: "P001", location: "3층큰마당", day: "월", time: "10:30~11:30", name: "교양·건강강좌", isOptional: true },
@@ -1364,8 +1364,10 @@
     // ==========================================
     // ⛳ 스크린 파크골프 예약 명단 조회 관련 로직
     // ==========================================
-    // 백엔드 URL (Render 배포 후 본인 API 주소로 변경: 예: https://xxx.onrender.com/api/reservations)
-    const GOLF_API_URL = "https://script.google.com/macros/s/AKfycbwd3kq1jBVT38_ptAvNGvjmoA-H7ISBVqiQse1Ns0ATIxOZa22k-O4aDmViCPxob5V7/exec?action=golf"; 
+    // 명단은 복지관 PC(golf_sync.py)가 엔컴에서 읽어 Apps Script 에 올려 두고, 여기서는 그것을 불러온다.
+    // 사진 관리와 같은 Apps Script 주소(GAS_URL)를 그대로 쓴다.
+    const GOLF_API_URL = GAS_URL + "?action=golf";
+    const GOLF_STALE_MINUTES = 20;   // 이보다 오래 갱신이 없으면 경고 표시
 
     function openGolfModal() {
       document.getElementById('golf-modal').classList.remove('hidden');
@@ -1376,24 +1378,28 @@
       document.getElementById('golf-modal').classList.add('hidden');
     }
 
+function formatKstTime(date) {
+  return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' });
+}
+
 async function fetchGolfReservations() {
   const container = document.getElementById('golf-list-container');
   const dateBadge = document.getElementById('golf-date-badge');
-  
+
   container.innerHTML = `
     <div class="text-center py-8 text-slate-400 text-sm">
       <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600"></i>
-      <p>엔컴 서버에서 예약 명단을 불러오는 중...</p>
+      <p>예약 명단을 불러오는 중...</p>
     </div>
   `;
 
   try {
-    const response = await fetch(GOLF_API_URL);
+    const response = await fetch(GOLF_API_URL + "&t=" + Date.now());
     if (!response.ok) throw new Error("서버 응답 에러");
-    
+
     const result = await response.json();
 
-    // 📌 백엔드(GAS)에서 에러 객체를 반환한 경우 처리
+    // 백엔드(GAS)에서 에러 객체를 반환한 경우
     if (result.error) {
       dateBadge.innerText = "조회 실패";
       container.innerHTML = `
@@ -1406,20 +1412,39 @@ async function fetchGolfReservations() {
       return;
     }
 
-    dateBadge.innerText = `조회 날짜: ${result.date || '날짜 미지정'}`;
+    // 날짜 + 마지막 갱신 시각
+    const updated = result.updatedAt ? new Date(result.updatedAt) : null;
+    const ageMin = (updated && !isNaN(updated)) ? Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000)) : null;
+    dateBadge.innerText = `조회 날짜: ${result.date || '날짜 미지정'}` + (ageMin !== null ? ` · 마지막 갱신 ${formatKstTime(updated)}` : '');
+
+    // 안내 배너: 한 번도 못 받았거나, 오래 갱신이 없을 때
+    let notice = '';
+    if (!result.updatedAt) {
+      notice = `
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-[11px] leading-relaxed flex gap-2">
+          <i class="fa-solid fa-circle-info mt-0.5"></i>
+          <span>아직 복지관 PC에서 올린 명단이 없습니다. PC의 동기화 프로그램이 켜져 있는지 확인해 주세요.</span>
+        </div>`;
+    } else if (ageMin !== null && ageMin >= GOLF_STALE_MINUTES) {
+      notice = `
+        <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-3 text-[11px] leading-relaxed flex gap-2">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5"></i>
+          <span>마지막 갱신이 <b>${ageMin >= 60 ? Math.floor(ageMin / 60) + '시간 ' + (ageMin % 60) + '분' : ageMin + '분'} 전</b>입니다. 복지관 PC가 꺼져 있거나 동기화 프로그램이 멈췄을 수 있어 명단이 최신이 아닐 수 있어요.</span>
+        </div>`;
+    }
 
     if (!result.data || result.data.length === 0) {
-      container.innerHTML = `
+      container.innerHTML = notice + `
         <div class="bg-white rounded-2xl p-6 text-center text-slate-400 border border-slate-200">
           <i class="fa-solid fa-calendar-xmark text-3xl mb-2 text-slate-300"></i>
-          <p class="text-sm font-semibold">예약된 명단이 없습니다.</p>
+          <p class="text-sm font-semibold">${result.updatedAt ? '예약된 명단이 없습니다.' : '불러온 명단이 없습니다.'}</p>
         </div>
       `;
       return;
     }
 
-    container.innerHTML = "";
-    
+    container.innerHTML = notice;
+
     result.data.forEach(slot => {
       const card = document.createElement('div');
       card.className = "bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200 space-y-2";
@@ -1441,7 +1466,7 @@ async function fetchGolfReservations() {
             <i class="fa-regular fa-clock text-emerald-600"></i> ${slot.time}
           </span>
         </div>
-        
+
         <div class="grid grid-cols-2 gap-2 pt-0.5">
           <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
             <div class="text-[11px] font-bold text-slate-500 mb-1 flex items-center gap-1">
